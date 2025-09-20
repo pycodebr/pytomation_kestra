@@ -1,0 +1,103 @@
+id: products_report_v1
+namespace: company
+
+tasks:
+  - id: get_products_data
+    type: io.kestra.plugin.scripts.python.Script
+    dependencies:
+      - requests
+      - kestra
+    script: |
+      from kestra import Kestra
+      import requests
+
+      def main():
+          response = requests.get(
+              url='https://dummyjson.com/products',
+          )
+          Kestra.outputs({'products': response.json().get('products')})
+
+
+      if __name__ == '__main__':
+          main()
+
+  - id: generate_ai_report
+    type: io.kestra.plugin.scripts.python.Script
+    dependencies:
+      - langchain_openai
+      - kestra
+    script: |
+      from kestra import Kestra
+      from langchain_openai import ChatOpenAI
+
+
+      def main():
+          products_data = {{ outputs.get_products_data['vars']['products'] }}
+          llm = ChatOpenAI(
+              api_key="{{kv(namespace=flow.namespace, key='OPENAI_API_KEY')}}",
+              model='gpt-5-mini',
+          )
+          
+          system_prompt = '''
+          Você é um assistente que gera relatórios de produtos para WhatsApp.
+          Seja direto, use emojis e formate de forma clara para mensagem mobile.
+          '''
+          user_prompt = '''Com base nestes dados de produtos: {products_data}
+          Gere um relatório resumido e atrativo para envio no WhatsApp, incluindo
+          informações principais dos produtos de forma organizada.
+          '''
+          user_prompt = user_prompt.format(products_data=products_data)
+          
+          response = llm.invoke([
+              {'role': 'system', 'content': system_prompt},
+              {'role': 'user', 'content': user_prompt}
+          ])
+          report_text = response.content
+
+          Kestra.outputs({'ai_report': report_text})
+
+
+      if __name__ == '__main__':
+          main()
+
+  - id: send_report
+    type: io.kestra.plugin.scripts.python.Script
+    dependencies:
+      - requests
+      - kestra
+    script: |
+      from kestra import Kestra
+      import requests
+
+
+      EVOLUTION_API_URL = "{{kv(namespace=flow.namespace, key='EVOLUTION_API_URL')}}"
+      EVOLUTION_INSTANCE_NAME = "{{kv(namespace=flow.namespace, key='EVOLUTION_INSTANCE_NAME')}}"
+      EVOLUTION_AUTHENTICATION_API_KEY = "{{kv(namespace=flow.namespace, key='EVOLUTION_AUTHENTICATION_API_KEY')}}"
+
+      def send_whatsapp_message(number, text):
+          url = f'{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE_NAME}'
+          headers = {
+              'apikey': EVOLUTION_AUTHENTICATION_API_KEY,
+              'Content-Type': 'application/json'
+          }
+          payload = {
+              'number': number,
+              'text': text,
+          }
+          return requests.post(
+              url=url,
+              json=payload,
+              headers=headers,
+          ).text
+
+      def main():
+          ai_report = """{{ outputs.generate_ai_report['vars']['ai_report'] }}"""
+          response = send_whatsapp_message(
+              number="{{kv(namespace=flow.namespace, key='RECIPIENT_REPORT_NUMBER')}}",
+              text=ai_report,
+          )
+          Kestra.outputs({'result': response})
+
+
+      if __name__ == '__main__':
+          main()

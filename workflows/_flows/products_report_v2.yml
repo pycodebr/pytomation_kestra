@@ -1,0 +1,44 @@
+id: products_report_v2
+namespace: company
+
+tasks:
+  - id: get_products_data
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    dependencies:
+      - requests
+      - kestra
+    commands:
+      - python get_products_data.py
+
+  - id: generate_ai_report
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    dependencies:
+      - langchain_openai
+      - kestra
+      - python-dotenv
+    commands:
+      - python generate_ai_report.py
+    env:
+      OPENAI_API_KEY: "{{ kv('OPENAI_API_KEY') }}"
+      PRODUCTS_DATA: "{{ outputs.get_products_data.vars['products'] }}"
+
+  - id: send_report
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    dependencies:
+      - requests
+      - kestra
+      - python-dotenv
+    commands:
+      - python send_report.py
+    env:
+      AI_REPORT: "{{ outputs.generate_ai_report.vars['ai_report'] }}"
+      EVOLUTION_API_URL: "{{ kv('EVOLUTION_API_URL') }}"
+      EVOLUTION_INSTANCE_NAME: "{{ kv('EVOLUTION_INSTANCE_NAME') }}"
+      EVOLUTION_AUTHENTICATION_API_KEY: "{{ kv('EVOLUTION_AUTHENTICATION_API_KEY') }}"
+      RECIPIENT_REPORT_NUMBER: "{{ kv('RECIPIENT_REPORT_NUMBER') }}"

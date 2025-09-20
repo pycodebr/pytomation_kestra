@@ -1,0 +1,45 @@
+id: products_report_v3
+namespace: company
+
+tasks:
+  - id: get_products_data
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    outputFiles:
+      - products.json
+    beforeCommands:
+      - pip install -r requirements.txt
+    commands:
+      - python workflows/products_report/tasks/get_products_data.py
+
+  - id: generate_ai_report
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      products.json: "{{ outputs.get_products_data.outputFiles['products.json'] }}"
+    outputFiles:
+      - ai_report.txt
+    beforeCommands:
+      - pip install -r requirements.txt
+    commands:
+      - python workflows/products_report/tasks/generate_ai_report.py
+    env:
+      OPENAI_API_KEY: "{{ kv('OPENAI_API_KEY') }}"
+
+  - id: send_report
+    type: io.kestra.plugin.scripts.python.Commands
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      ai_report.txt: "{{ outputs.generate_ai_report.outputFiles['ai_report.txt'] }}"
+    beforeCommands:
+      - pip install -r requirements.txt
+    commands:
+      - python workflows/products_report/tasks/send_report.py
+    env:
+      EVOLUTION_API_URL: "{{ kv('EVOLUTION_API_URL') }}"
+      EVOLUTION_INSTANCE_NAME: "{{ kv('EVOLUTION_INSTANCE_NAME') }}"
+      EVOLUTION_AUTHENTICATION_API_KEY: "{{ kv('EVOLUTION_AUTHENTICATION_API_KEY') }}"
+      RECIPIENT_REPORT_NUMBER: "{{ kv('RECIPIENT_REPORT_NUMBER') }}"
